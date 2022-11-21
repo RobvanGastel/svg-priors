@@ -3,5 +3,5 @@ An implemenation of SVG0 with behavior priors in PyTorch
 
 
 
-- References
+**References**
 - https://github.com/d3sm0/svg

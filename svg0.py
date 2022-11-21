@@ -8,14 +8,13 @@ import torch.nn as nn
 from torch.optim import Adam
 
 from buffer import RolloutBuffer
-from core import MLPVFunction, MLPQFunction, MLPGaussianActor, mlp
+from core import MLPVFunction, MLPQFunction, MLPGaussianActor
 
 
 VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages q_estimate")
 
-class SVG0(nn.Module):
+class SVG0:
     def __init__(self, config, env, gamma=0.99, polyak=0.995):
-        self.__init__()
 
         # TODO: Discount factor, buffer size, hidden_sizes
         hidden_sizes=(64, 64)
@@ -29,6 +28,11 @@ class SVG0(nn.Module):
         self.env = env
         obs_dim = env.observation_space.shape[0]
         act_dim = env.action_space.shape[0]
+        print(obs_dim, act_dim)
+        
+        # Replay buffer        
+        self.buffer = RolloutBuffer(obs_dim, act_dim, 2000)
+        
         
         # Policy Network
         self.pi = MLPGaussianActor(
@@ -36,18 +40,16 @@ class SVG0(nn.Module):
         )
 
         # Value functions
-        self.critic = MLPQFunction(obs_dim, hidden_sizes, activation)
+        self.critic = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         self.baseline = MLPVFunction(obs_dim, hidden_sizes, activation)
         self.target_critic = MLPVFunction(obs_dim, hidden_sizes, activation)
         
-        # Replay buffer        
-        self.buffer = RolloutBuffer(obs_dim, act_dim, config.size)
 
         # Set up optimizers for policy and value function
-        self.actor_optim = Adam(self.pi.parameters(), lr=config.policy_lr)
+        self.actor_optim = Adam(self.pi.parameters(), lr=1e-3)
         
         value_params = itertools.chain(self.critic.parameters(), self.baseline.parameters())
-        self.critic_optim = Adam(value_params, lr=config.config.critic_lr)
+        self.critic_optim = Adam(value_params, lr=1e-3)
 
     def update_target(self):
         # Update target networks by polyak averaging.
@@ -60,10 +62,13 @@ class SVG0(nn.Module):
                 
                 
     def act(self, obs):
-        return NotImplemented
-
-    def update(self, data):
-        # TODO: Sample from buffer
+        pi = self.pi._distribution(obs)
+        a = pi.sample()
+        print(a.shape)
+        return a
+    
+    def update(self):
+        data = self.buffer.get()
         
         self.update_step += 1
         critic_info = self.update_critic(data)
@@ -165,9 +170,14 @@ class SVG0(nn.Module):
 
 
     def train_agent(self, epochs=50):
+        print("Train agent")
 
         # TODO: Continuous environment
-        env = gym.make("CartPole-v1")
+        env = gym.make("Pendulum-v0")
+        act_dim = env.action_space.shape
+        obs_dim = env.observation_space.shape
+        
+        global_step = 0
 
         # 1) Given empty experience database D
         for episode in range(epochs):
@@ -176,7 +186,7 @@ class SVG0(nn.Module):
             # 2) for t = 0 to ∞ do
             while True:
                 # 3) Apply control π(s,η; θ), η ∼ ρ(η)
-                act = self.act(obs)
+                act = self.act(torch.tensor(obs).float())
                 
                 # 4) Observe r, s′
                 next_obs, rew, done, info = self.env.step(act)
@@ -196,10 +206,21 @@ class SVG0(nn.Module):
                 obs = next_obs
                 
                 # 9) Policy update
-                # 10) Sample (s_k, a_k, r_k, s_k+1) from D (k ≤ t)
                 
+                if global_step % 2000 == 0:
+                    self.update()
+                      
+                # 10) Sample (s_k, a_k, r_k, s_k+1) from D (k ≤ t)
                 # w = p(a_k |s_k; θ_t) / p(a_k |s_k; θ_k)               
                 if done:
                     print("Episode finished after %i steps" % ep_len)
                     break
-       
+                
+                global_step += 1
+
+print("Init SVG0")
+env = gym.make("Pendulum-v0")
+svg = SVG0(None, env)
+print("Init SVG0")
+
+svg.train_agent()
