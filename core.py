@@ -76,19 +76,22 @@ class MLPQFunction(nn.Module):
 
 class MLPActorCritic(nn.Module):
     def __init__(
-        self, observation_space, action_space, hidden_sizes=(64, 64), activation=nn.Tanh
+        self, obs_dim, act_dim, hidden_sizes=(64, 64), activation=nn.Tanh
     ):
         super().__init__()
 
-        obs_dim = observation_space.shape[0]
-
         # policy builder depends on action space
         self.pi = MLPGaussianActor(
-            obs_dim, action_space.shape[0], hidden_sizes, activation
+            obs_dim, act_dim, hidden_sizes, activation
         )
 
-        # build value function
+        # build Q functions
+        self.q1 = MLPQFunction(obs_dim, hidden_sizes, activation)
+        
+        # Build V function
         self.v = MLPVFunction(obs_dim, hidden_sizes, activation)
+        self.target_v = MLPVFunction(obs_dim, hidden_sizes, activation)
+
 
     def step(self, obs):
         with torch.no_grad():
@@ -100,3 +103,10 @@ class MLPActorCritic(nn.Module):
 
     def act(self, obs):
         return self.step(obs)[0]
+
+
+class DynamicsModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        
