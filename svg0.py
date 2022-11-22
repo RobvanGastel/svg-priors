@@ -30,8 +30,8 @@ class SVG0:
         act_dim = env.action_space.shape[0]
         print(obs_dim, act_dim)
         
-        # Replay buffer        
-        self.buffer = RolloutBuffer(obs_dim, act_dim, 2000)
+        # Replay buffer
+        self.buffer = RolloutBuffer(obs_dim, act_dim, 200)
         
         
         # Policy Network
@@ -46,10 +46,11 @@ class SVG0:
         
 
         # Set up optimizers for policy and value function
-        self.actor_optim = Adam(self.pi.parameters(), lr=1e-3)
+        self.actor_optim = Adam(self.pi.parameters(), lr=5e-4)
         
         value_params = itertools.chain(self.critic.parameters(), self.baseline.parameters())
-        self.critic_optim = Adam(value_params, lr=1e-3)
+        self.critic_optim = Adam(value_params, lr=5e-4)
+        self.value_params = value_params
 
     def update_target(self):
         # Update target networks by polyak averaging.
@@ -64,15 +65,29 @@ class SVG0:
     def act(self, obs):
         pi = self.pi._distribution(obs)
         a = pi.sample()
-        print(a.shape)
         return a
     
     def update(self):
         data = self.buffer.get()
         
         self.update_step += 1
-        critic_info = self.update_critic(data)
-        actor_info = self.update_actor(data)
+        
+        for _ in range(3):
+            self.actor_optim.zero_grad()
+            loss_actor, actor_info = self.update_actor(data)
+            loss_actor.backward()
+        
+            nn.utils.clip_grad_norm_(self.pi.parameters(), 1.0)
+                
+            self.actor_optim.step()
+            
+            self.critic_optim.zero_grad()
+            loss_critic, critic_info = self.update_critic(data)
+            loss_critic.backward()
+            
+            nn.utils.clip_grad_norm_(self.value_params, 1.0)
+            
+            self.critic_optim.step()
         
         if self.update_step % self.update_target_every == 0:
             self.update_target()
@@ -89,10 +104,8 @@ class SVG0:
         q_tm1 = self.critic(obs, act).squeeze()
         discount_t = (1 - done) * self.gamma
 
-    
         vtrace_target = self.vtrace_td_errors_and_advantage(v_tm1.detach(), 
-                                    discount_t, rew, v_t, 
-                                    rho_tm1=torch.ones_like(discount_t))
+                                    discount_t, rew, v_t, q_tm1)
         
         q_loss = (vtrace_target.q_estimate - q_tm1) * (1 - self.gamma)
         # + utils.l2_norm(
@@ -107,7 +120,7 @@ class SVG0:
                              }
 
 
-    def vtrace_td_errors_and_advantage(log_rhos, discounts, rewards, 
+    def vtrace_td_errors_and_advantage(self, log_rhos, discounts, rewards, 
                                     values, bootstrap_value, 
                                     clip_rho_threshold=1.0, clip_pg_rho_threshold=1.0):
         
@@ -119,10 +132,16 @@ class SVG0:
                 clipped_rhos = rhos
 
             cs = torch.clamp(rhos, max=1.0)
+            # print(bootstrap_value.shape)
+            # print(values[1:].shape)
+            
+            # print(torch.cat((values[1:], bootstrap_value[-1])).shape)
             # Append bootstrapped value to get [v1, ..., v_t+1]
-            values_t_plus_1 = torch.cat(
-                [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
-            )
+            # values_t_plus_1 = torch.cat(
+            #     [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
+            # )
+            values_t_plus_1 = values
+            # torch.cat((values[1:], bootstrap_value[-1]), dim=0)
             deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
             acc = torch.zeros_like(bootstrap_value)
@@ -138,6 +157,7 @@ class SVG0:
 
             # Advantage for policy gradient.
             broadcasted_bootstrap_values = torch.ones_like(vs[0]) * bootstrap_value
+            
             vs_t_plus_1 = torch.cat(
                 [vs[1:], broadcasted_bootstrap_values.unsqueeze(0)], dim=0
             )
@@ -160,16 +180,17 @@ class SVG0:
         obs, act, rew, next_obs = data['obs'], data['act'], data['rew'], data['next_obs']
         done = data['done']
         
-        pi = self.model.actor(obs)
+        pi = self.pi(obs)[0]
         new_actions = pi.rsample()
+
         # reg = utils.l2_norm(self.model.actor.named_parameters())
-        value = (1. - done) * self.model.critic(obs, new_actions).squeeze(-1)
+        value = (1. - done) * self.critic(obs, new_actions).squeeze(-1)
         return (-value).mean(), {"actor/value": value.mean().detach(),
                                  "actor/loc": pi.mean.mean(),
                                  "actor/scale": pi.variance.mean()}
 
 
-    def train_agent(self, epochs=50):
+    def train_agent(self, epochs=3000):
         print("Train agent")
 
         # TODO: Continuous environment
@@ -191,8 +212,10 @@ class SVG0:
                 # 4) Observe r, s′
                 next_obs, rew, done, info = self.env.step(act)
                 
+                # d = False if ep_len==max_ep_len else d
+                
                 # 5) Insert (s, a, r, s′) into D
-                self.buffer.store(obs, act, rew, next_obs)
+                self.buffer.store(obs, act, rew, next_obs, done)
 
                 # Model and critic updates 
                 # 7) Train generative model f ˆ using D
@@ -207,13 +230,15 @@ class SVG0:
                 
                 # 9) Policy update
                 
-                if global_step % 2000 == 0:
-                    self.update()
+                # if global_step % 1990 == 0:
                       
                 # 10) Sample (s_k, a_k, r_k, s_k+1) from D (k ≤ t)
                 # w = p(a_k |s_k; θ_t) / p(a_k |s_k; θ_k)               
                 if done:
+                    print(f"Episode length: {ep_len} and return: {ep_ret}")
                     print("Episode finished after %i steps" % ep_len)
+                    
+                    self.update()
                     break
                 
                 global_step += 1

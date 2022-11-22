@@ -37,18 +37,20 @@ class RolloutBuffer:
         self.act_buf = np.zeros(combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
+        self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs):
+    def store(self, obs, act, rew, next_obs, done):
         """
         Append one timestep of agent-environment interaction to the buffer.
         """
         # buffer has to have room so you can store
-        assert self.ptr < self.max_size
+        # assert self.ptr < self.max_size
         self.obs_buf[self.ptr] = obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.next_obs_buf[self.ptr] = next_obs
+        self.done_buf[self.ptr] = done
         self.ptr += 1
 
     def finish_path(self, last_val=0):
@@ -75,13 +77,14 @@ class RolloutBuffer:
         mean zero and std one). Also, resets some pointers in the buffer.
         """
         # buffer has to be full before you can get
-        assert self.ptr == self.max_size
+        # assert self.ptr == self.max_size
         self.ptr, self.path_start_idx = 0, 0
 
         data = dict(
             obs=self.obs_buf,
             act=self.act_buf,
-            ret=self.ret_buf,
+            rew=self.rew_buf,
             next_obs=self.next_obs_buf,
+            done=self.done_buf
         )
         return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in data.items()}
