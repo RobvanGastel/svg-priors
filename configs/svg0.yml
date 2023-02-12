@@ -1,0 +1,19 @@
+# Experiment
+device_id: cuda
+seed: 42
+epochs: 3000
+log_every_n: 5
+
+# Environment
+env: "MountainCarContinuous-v0"
+num_steps: 200
+
+# Agent
+svg0:
+  lr: 0.003
+  gamma: 0.95
+  hidden_sizes: [64, 64, 64]
+  update_epochs: 5
+  buffer_steps: 6000
+  num_mini_batches: 10
+  update_target_every: 10
