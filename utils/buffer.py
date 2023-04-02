@@ -1,4 +1,5 @@
 import torch
+import random
 
 
 class RolloutBuffer:
@@ -13,8 +14,6 @@ class RolloutBuffer:
         A buffer for storing trajectories experienced by an SVG-0 agent interacting
         with the environment.
         """
-
-        # TODO: On-policy or ring buffer?
 
         self.data = {
             "obs": torch.zeros((size, obs_dim)).to(device),
@@ -31,13 +30,14 @@ class RolloutBuffer:
         Append one timestep of agent-environment interaction to the buffer.
         """
 
-        # assert self.ptr < self.max_size
-        self.data["obs"][self.ptr] = obs
-        self.data["action"][self.ptr] = action
-        self.data["reward"][self.ptr] = torch.tensor(rew).to(self.device)
-        self.data["next_obs"][self.ptr] = torch.tensor(next_obs).to(self.device)
-        self.data["termination"][self.ptr] = torch.tensor(termination).to(self.device)
-        self.ptr += 1
+        curr_ptr = self.ptr % self.max_size
+        self.data["obs"][curr_ptr] = obs
+        self.data["action"][curr_ptr] = torch.tensor(action).to(self.device)
+        self.data["reward"][curr_ptr] = torch.tensor(rew).to(self.device)
+        self.data["next_obs"][curr_ptr] = torch.tensor(next_obs).to(self.device)
+        self.data["termination"][curr_ptr] = torch.tensor(termination).to(self.device)
+
+        self.ptr = (self.ptr + 1) % self.max_size
 
     def reset(self):
         self.ptr = 0
@@ -46,13 +46,8 @@ class RolloutBuffer:
 
     def get(self):
         """
-        Call this at the end of an epoch to get all of the data from
-        the buffer, with advantages appropriately normalized (shifted to have
-        mean zero and std one). Also, resets some pointers in the buffer.
+        Obtain entire buffer to random sample from during the agent optimization.
         """
-        # buffer has to be full before you can get
-        # assert self.ptr == self.max_size
-
         return {
             k: torch.as_tensor(v, dtype=torch.float32) for k, v in self.data.items()
         }

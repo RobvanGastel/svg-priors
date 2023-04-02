@@ -1,9 +1,63 @@
 import os
+import math
 
 import torch
+import torch.nn as nn
+from torch.nn.functional import softplus
+from torch.distributions import constraints
+from torch.distributions.transforms import Transform
+
 import numpy as np
 from utils.logger import Logger
 from moviepy.editor import ImageSequenceClip
+
+
+def mlp(sizes, activation, output_activation=nn.Identity):
+    layers = []
+    for j in range(len(sizes) - 1):
+        act = activation if j < len(sizes) - 2 else output_activation
+        layers += [nn.Linear(sizes[j], sizes[j + 1]), act()]
+    return nn.Sequential(*layers)
+
+
+# Taken from: https://github.com/pytorch/pytorch/pull/19785/files
+# The composition of affine + sigmoid + affine transforms is numerically unstable
+# tanh transform is (2 * sigmoid(2x) - 1)
+# Old Code Below:
+# transforms = [AffineTransform(loc=0, scale=2), SigmoidTransform(), AffineTransform(loc=-1, scale=2)]
+class TanhTransform(Transform):
+    r"""
+    Transform via the mapping :math:`y = \tanh(x)`. It is equivalent to
+    ```
+    ComposeTransform([AffineTransform(0., 2.), SigmoidTransform(), AffineTransform(-1., 2.)])
+    ```
+    However this might not be numerically stable, thus it is recommended to use `TanhTransform`
+    instead. Note that one should use `cache_size=1` when it comes to `NaN/Inf` values.
+    """
+    domain = constraints.real
+    codomain = constraints.interval(-1.0, 1.0)
+    bijective = True
+    sign = +1
+
+    @staticmethod
+    def atanh(x):
+        return 0.5 * (x.log1p() - (-x).log1p())
+
+    def __eq__(self, other):
+        return isinstance(other, TanhTransform)
+
+    def _call(self, x):
+        return x.tanh()
+
+    def _inverse(self, y):
+        # We do not clamp to the boundary here as it may degrade the performance of certain algorithms.
+        # one should use `cache_size=1` instead
+        return self.atanh(y)
+
+    def log_abs_det_jacobian(self, x, y):
+        # We use a formula that is more numerically stable, see details in the following link
+        # https://github.com/tensorflow/probability/blob/master/tensorflow_probability/python/bijectors/tanh.py#L69-L80
+        return 2.0 * (math.log(2.0) - x - softplus(-2.0 * x))
 
 
 def make_gif(agent, env, episode, config):
@@ -17,11 +71,11 @@ def make_gif(agent, env, episode, config):
         steps.append(env.render())
 
         obs = torch.tensor(obs).float().to(config["device"])
-        action = agent.act(obs, deterministic=False)
+        action = agent.act(obs, deterministic=True)
         action = np.clip(
             action.cpu().numpy(), env.action_space.low[0], env.action_space.high[0]
         )
-        print(f"debug: action {action}")
+        # print(f"debug: action {action}")
         obs, reward, terminated, truncated, _ = env.step(action)
         rewards.append(reward)
 

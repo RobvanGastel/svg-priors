@@ -2,7 +2,7 @@
 device_id: cuda
 seed: 42
 epochs: 3_000
-log_every_n: 10
+log_every_n: 10 
 update_every_n: 1
 
 # Environment
@@ -11,9 +11,12 @@ env: "Pendulum-v1"
 # Agent
 svg0:
   lr: 3.0e-4
-  gamma: 0.95
+  gamma: 0.99
   buffer_steps: 2_000
   update_epochs: 3
-  batch_size: 256
+  num_mini_batches: 256
   update_interval: 1
   hidden_sizes: [256, 256, 256, 256]
+  # KL prior
+  prior_obs_dim: 1
+  prior_coeff: 0.05
