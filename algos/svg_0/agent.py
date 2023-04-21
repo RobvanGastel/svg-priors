@@ -16,14 +16,16 @@ class SVG0(nn.Module):
         obs_dim,
         action_dim,
         action_lim,
+        device,
         lr=3e-4,
         tau=5e-3,
         gamma=0.95,
-        batch_size=5,
+        batch_size=256,
         update_epochs=5,
         update_interval=2,
         activation=nn.ReLU,
         hidden_sizes=[64, 64],
+        use_target_entropy=False,
         **kwargs,
     ):
         super().__init__()
@@ -32,14 +34,15 @@ class SVG0(nn.Module):
         self.update_step = 0
         self.tau = tau
         self.gamma = gamma
+        self.batch_size = batch_size
         self.action_limit = action_lim
         self.update_epochs = update_epochs
         self.update_interval = update_interval
-        self.batch_size = batch_size
+        self.use_target_entropy = use_target_entropy
 
         # Policy network
         self.pi = StochasticPolicy(
-            obs_dim, action_dim, action_lim, hidden_sizes, activation
+            obs_dim, action_dim, hidden_sizes, activation
         )
 
         # Q functions networks
@@ -61,6 +64,12 @@ class SVG0(nn.Module):
             self.q_optim, 1, 1e-6, total_iters=3000
         )
 
+        # Temperature for target entropy to compare with KL priors
+        if self.use_target_entropy:
+            self.log_alpha = torch.zeros(1, requires_grad=True).to(device)
+            self.temp_optimizer = optim.Adam([self.log_alpha], lr=lr)
+    
+
     def update_target(self):
         # Update target networks by polyak averaging.
         with torch.no_grad():
@@ -74,6 +83,8 @@ class SVG0(nn.Module):
         if deterministic:
             action = mean
 
+
+        action.clamp_(-self.action_limit, self.action_limit)
         return action
 
     def optimize(self, batch, global_step):
@@ -87,10 +98,10 @@ class SVG0(nn.Module):
             )
 
             batch_indices = next(iter(batch_indices))
-            batch = {k: v[batch_indices] for k, v in batch.items()}
+            mini_batch = {k: v[batch_indices] for k, v in batch.items()}
 
             # Update Q functions
-            q_loss, q_1, q_2 = self._compute_q_loss(batch)
+            q_loss, q_1, q_2 = self._compute_q_loss(mini_batch)
 
             self.q_optim.zero_grad()
             q_loss.backward()
@@ -102,10 +113,15 @@ class SVG0(nn.Module):
                     p.requires_grad = False
 
                 # Update stochastic policy
-                pi_loss, pi = self._compute_policy_loss(batch)
+                pi_loss, pi, temp_loss = self._compute_policy_loss(mini_batch)
                 self.pi_optim.zero_grad()
                 pi_loss.backward()
                 self.pi_optim.step()
+
+                if self.use_target_entropy:
+                    self.temp_optimizer.zero_grad()
+                    temp_loss.backward()
+                    self.temp_optimizer.step()
 
                 for p in self.q.parameters():
                     p.requires_grad = True
@@ -169,12 +185,16 @@ class SVG0(nn.Module):
     def _compute_policy_loss(self, batch):
         b_obs = batch["obs"]
 
-        b_action, _, _ = self.pi(b_obs, with_logp=False)
+        b_action, b_logprobs, _ = self.pi(b_obs, with_logp=True)
         q_b1, q_b2 = self.q(b_obs, b_action)
         b_q_values = torch.min(q_b1, q_b2)
 
-        # TODO: Learn the temperature for entropy regularization
-        # self.alpha.detach() * logp_a
+        if self.use_target_entropy:
+            alpha = self.log_alpha.exp()
+            policy_loss = (alpha * b_logprobs - b_q_values).mean()
+            temp_loss = -(alpha * b_logprobs.detach()).mean()
+        else:
+            policy_loss = (-b_q_values).mean()
+            temp_loss = None
 
-        policy_loss = (-b_q_values).mean()
-        return policy_loss, b_action
+        return policy_loss, b_action, temp_loss

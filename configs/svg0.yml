@@ -1,8 +1,8 @@
 # Experiment
 device_id: cuda
 seed: 42
-epochs: 3_000
-log_every_n: 10
+epochs: 200
+log_every_n: 5 
 update_every_n: 1
 
 # Environment
@@ -13,7 +13,8 @@ svg0:
   lr: 3.0e-4
   gamma: 0.95
   buffer_steps: 2_000
+  use_target_entropy: False
   update_epochs: 3
   batch_size: 256
   update_interval: 1
-  hidden_sizes: [256, 256, 256, 256]
+  hidden_sizes: [128, 128, 128]

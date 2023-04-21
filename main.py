@@ -29,6 +29,7 @@ def main(config, agent_cls):
         obs_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
         action_lim=env.action_space.high[0],
+        device=config["device"],
         **config["svg0"],
     ).to(config["device"])
 
@@ -70,13 +71,14 @@ def main(config, agent_cls):
             global_step += 1
 
         # Log final episode statistics
-        Logger.get().writer.add_scalar("env/return", info["episode"]["r"], global_step)
-        Logger.get().writer.add_scalar("env/length", info["episode"]["l"], global_step)
+        writer = Logger.get().writer
+        writer.add_scalar("env/ep_return", info["episode"]["r"], global_step)
+        writer.add_scalar("env/ep_length", info["episode"]["l"], global_step)
 
         # Store the weights, make a gif, eval and logging
         if episode % config["log_every_n"] == 0 and episode != 0:
 
-            if episode % (config["log_every_n"] * 20) == 0:
+            if episode % (config["log_every_n"] * 5) == 0:
                 make_gif(agent, test_env, episode, config)
 
             # TODO: When implementation is stable
@@ -91,6 +93,9 @@ def main(config, agent_cls):
                 f"test - episode return, length: ({np.mean(test_return):.3f}, "
                 f"{np.mean(test_ep_len):.0f})"
             )
+
+            writer.add_scalar("env/test_ep_return", test_return, global_step)
+            writer.add_scalar("env/test_ep_length", test_ep_len, global_step)
 
 
 def evaluate_policy(agent, env, episodes=10):

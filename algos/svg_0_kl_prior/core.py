@@ -45,7 +45,7 @@ class StochasticPolicy(nn.Module):
 
         mean = torch.tanh(mu)
 
-        return action, logp_a, mean
+        return action, logp_a, mean, pi_distribution
 
 
 class DoubleQFunction(nn.Module):

@@ -19,12 +19,12 @@ class SVG0(nn.Module):
         lr=3e-4,
         tau=5e-3,
         gamma=0.95,
-        batch_size=5,
+        batch_size=256,
         update_epochs=5,
         update_interval=2,
         activation=nn.ReLU,
         hidden_sizes=[64, 64],
-        prior_obs_dim=1,
+        prior_obs_dim=2,
         prior_coeff=0.01,
         **kwargs,
     ):
@@ -32,23 +32,23 @@ class SVG0(nn.Module):
 
         # Optimize variables
         self.update_step = 0
-        self.gamma = gamma
         self.tau = tau
+        self.gamma = gamma
+        self.batch_size = batch_size
         self.prior_coeff = prior_coeff
-        self.max_grad_norm = 0.5  # TODO: Does norm help?
         self.action_limit = action_lim
+        self.prior_obs_dim = prior_obs_dim
         self.update_epochs = update_epochs
         self.update_interval = update_interval
-        self.batch_size = batch_size
 
         # Policy network
         self.pi = StochasticPolicy(
-            obs_dim, action_dim, action_lim, hidden_sizes, activation
+            obs_dim, action_dim, hidden_sizes, activation
         )
 
         # Prior policy network
         self.prior_pi = StochasticPolicy(
-            prior_obs_dim, action_dim, action_lim, hidden_sizes, activation
+            prior_obs_dim, action_dim, hidden_sizes, activation
         )
 
         # Q functions networks
@@ -59,11 +59,12 @@ class SVG0(nn.Module):
         for p in self.target_q.parameters():
             p.requires_grad = False
 
-        # Set up optimizers for policy and value function
+        # Set up optimizers for policy, prior and value function
         self.q_optim = torch.optim.Adam(self.q.parameters(), lr=lr)
         self.pi_optim = torch.optim.Adam(self.pi.parameters(), lr=lr)
         self.prior_optim = torch.optim.Adam(self.prior_pi.parameters(), lr=lr)
 
+        # TODO: Prior scheduler?
         self.pi_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.pi_optim, 1, 1e-6, total_iters=3000
         )
@@ -79,11 +80,12 @@ class SVG0(nn.Module):
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
-            action, _, mean = self.pi(obs)
+            action, _, mean, _ = self.pi(obs)
 
         if deterministic:
             action = mean
 
+        action.clamp_(-self.action_limit, self.action_limit)
         return action
 
     def optimize(self, batch, global_step):
@@ -97,12 +99,13 @@ class SVG0(nn.Module):
             )
 
             batch_indices = next(iter(batch_indices))
-            batch = {k: v[batch_indices] for k, v in batch.items()}
+            mini_batch = {k: v[batch_indices] for k, v in batch.items()}
 
             # Compute KL divergence between pi and prior pi
+            # TODO: Taking assymetric prior samples needs to be done properly
             with torch.no_grad():
-                _, _, _, pi = self.pi(batch["obs"])
-            _, _, _, prior_pi = self.prior_pi(batch["obs"][:, :1])
+                _, _, _, pi = self.pi(mini_batch["next_obs"])
+            _, _, _, prior_pi = self.prior_pi(mini_batch["next_obs"][:, :self.prior_obs_dim])
             kl_reg = kl_divergence(pi, prior_pi)
             loss_kl = kl_reg.sum()
 
@@ -110,12 +113,11 @@ class SVG0(nn.Module):
             self.prior_optim.zero_grad()
             loss_kl.backward()
             self.prior_optim.step()
-
+            
             # Update Q functions
-            q_loss, q_1, q_2 = self._compute_q_loss(batch, kl_reg)
+            q_loss, q_1, q_2 = self._compute_q_loss(mini_batch)
 
             self.q_optim.zero_grad()
-            nn.utils.clip_grad_norm_(self.q.parameters(), self.max_grad_norm)
             q_loss.backward()
             self.q_optim.step()
 
@@ -125,12 +127,11 @@ class SVG0(nn.Module):
                     p.requires_grad = False
 
                 # Update stochastic policy
-                pi_loss, pi = self._compute_policy_loss(batch)
-                pi_loss = pi_loss - self.prior_coeff * loss_kl.detach()
+                pi_loss, pi = self._compute_policy_loss(mini_batch)
+                pi_loss = pi_loss - (self.prior_coeff * loss_kl.detach())
 
                 self.pi_optim.zero_grad()
                 pi_loss.backward()
-                nn.utils.clip_grad_norm_(self.pi.parameters(), self.max_grad_norm)
                 self.pi_optim.step()
 
                 for p in self.q.parameters():
@@ -149,7 +150,7 @@ class SVG0(nn.Module):
         writer.add_histogram("SVG0/Q1_histogram", q_1, global_step)
         writer.add_histogram("SVG0/Q2_histogram", q_2, global_step)
 
-    def _compute_q_loss(self, batch, kl_reg):
+    def _compute_q_loss(self, batch):
 
         b_obs, b_act, b_rew, b_next_obs, b_done = (
             batch["obs"],
@@ -160,10 +161,14 @@ class SVG0(nn.Module):
         )
 
         with torch.no_grad():
-            b_next_action, next_log_probs, b_next_mean, _ = self.pi(
+            b_next_action, _, b_next_mean, pi = self.pi(
                 b_next_obs, with_logp=False
             )
+            _, _, _, prior_pi = self.prior_pi(b_next_obs[:, :self.prior_obs_dim])
 
+            # \bar{KL}_t' = KL[pi(. | s_t')||prior_pi(. | s_t')]
+            kl_reg = kl_divergence(pi, prior_pi)
+            
             target_noise = b_next_action - b_next_mean
             b_next_action = b_next_mean + target_noise
 
@@ -173,7 +178,7 @@ class SVG0(nn.Module):
             q_target = torch.min(q_t1, q_t2)
 
             # TD target
-            value_target = (b_rew - self.prior_coeff * kl_reg) + (
+            value_target = (b_rew - (self.prior_coeff * kl_reg)) + (
                 1.0 - b_done
             ) * self.gamma * q_target
 

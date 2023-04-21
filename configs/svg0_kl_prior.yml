@@ -1,8 +1,8 @@
 # Experiment
 device_id: cuda
 seed: 42
-epochs: 3_000
-log_every_n: 10 
+epochs: 200
+log_every_n: 5 
 update_every_n: 1
 
 # Environment
@@ -11,12 +11,12 @@ env: "Pendulum-v1"
 # Agent
 svg0:
   lr: 3.0e-4
-  gamma: 0.99
+  gamma: 0.95
   buffer_steps: 2_000
   update_epochs: 3
-  num_mini_batches: 256
+  batch_size: 256
   update_interval: 1
-  hidden_sizes: [256, 256, 256, 256]
+  hidden_sizes: [128, 128, 128]
   # KL prior
-  prior_obs_dim: 1
-  prior_coeff: 0.05
+  prior_obs_dim: 2
+  prior_coeff: 0.01
