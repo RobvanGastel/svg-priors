@@ -10,8 +10,8 @@ from gymnasium.wrappers import RecordEpisodeStatistics
 from utils.misc import make_gif
 from utils.logger import Logger
 from utils.buffer import RolloutBuffer
-from algos.svg_0_kl_prior.agent import SVG0 as SVG0_KL_prior
 from algos.svg_0.agent import SVG0
+from algos.svg_0_kl_prior.agent import SVG0 as SVG0_KL_prior
 
 
 def main(config, agent_cls):

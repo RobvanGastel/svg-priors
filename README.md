@@ -1,5 +1,5 @@
 # Stochastic Value Gradients with Priors
-A PyTorch implemenation of the SVG algorithm with extension of KL regularized, and behavior priors.
+A PyTorch implemenation of the SVG(0) algorithm with extension of KL regularized, and behavior priors.
 
 ## Setup
 Install the following packages.
@@ -14,10 +14,10 @@ TODO
 
 ## Algorithms
 
-- [x] SVG0
+- [x] SVG(0)
+- [x] SVG(0) with KL regularized prior
 - [ ] SVG(∞)
-- [x] SVG0 with KL regularized prior
-- [ ] SVG0 with behavior priors
+- [ ] SVG(0) with behavior priors
 
 
 ## Results

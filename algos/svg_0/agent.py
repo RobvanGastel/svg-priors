@@ -25,6 +25,7 @@ class SVG0(nn.Module):
         update_interval=2,
         activation=nn.ReLU,
         hidden_sizes=[64, 64],
+        target_entropy=None,
         use_target_entropy=False,
         **kwargs,
     ):
@@ -38,6 +39,7 @@ class SVG0(nn.Module):
         self.action_limit = action_lim
         self.update_epochs = update_epochs
         self.update_interval = update_interval
+        self.target_entropy = target_entropy if target_entropy else -action_dim
         self.use_target_entropy = use_target_entropy
 
         # Policy network
@@ -66,7 +68,7 @@ class SVG0(nn.Module):
 
         # Temperature for target entropy to compare with KL priors
         if self.use_target_entropy:
-            self.log_alpha = torch.zeros(1, requires_grad=True).to(device)
+            self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
             self.temp_optimizer = optim.Adam([self.log_alpha], lr=lr)
     
 
@@ -114,14 +116,15 @@ class SVG0(nn.Module):
 
                 # Update stochastic policy
                 pi_loss, pi, temp_loss = self._compute_policy_loss(mini_batch)
-                self.pi_optim.zero_grad()
-                pi_loss.backward()
-                self.pi_optim.step()
 
                 if self.use_target_entropy:
                     self.temp_optimizer.zero_grad()
                     temp_loss.backward()
                     self.temp_optimizer.step()
+
+                self.pi_optim.zero_grad()
+                pi_loss.backward()
+                self.pi_optim.step()
 
                 for p in self.q.parameters():
                     p.requires_grad = True
@@ -160,20 +163,6 @@ class SVG0(nn.Module):
             # take min to mitigate maximization bias in q-functions
             q_target = torch.min(q_t1, q_t2)
 
-            # TODO: Finish Retrace Q-updates
-            # next_log_probs = normal.log_prob(next_actions).sum(-1, keepdim=True)
-            # next_log_pi = next_log_probs - next_log_std.sum(-1, keepdim=True)
-
-            # # Compute Retrace weights and trace
-            # retrace_weights = torch.min(torch.ones_like(q_target), torch.exp(next_log_pi - next_log_probs))
-            # trace = retrace_weights.clone()
-
-            # for i in range(trace.size(0) - 2, -1, -1):
-            #     trace[i] = trace[i+1] * self.gamma * (1 - b_done[i+1])
-
-            # retrace_weights *= trace * self.lambda_retrace
-            # target_q_values = b_rew.unsqueeze(-1) + self.gamma * (1 - b_done.unsqueeze(-1)) * (next_q_values + retrace_weights * (next_q_values - next_q1_values))
-
             # TD target
             value_target = b_rew + (1.0 - b_done) * self.gamma * q_target
 
@@ -190,9 +179,8 @@ class SVG0(nn.Module):
         b_q_values = torch.min(q_b1, q_b2)
 
         if self.use_target_entropy:
-            alpha = self.log_alpha.exp()
-            policy_loss = (alpha * b_logprobs - b_q_values).mean()
-            temp_loss = -(alpha * b_logprobs.detach()).mean()
+            policy_loss = (self.log_alpha.exp() * b_logprobs - b_q_values).mean()
+            temp_loss = -self.log_alpha.exp() * (b_logprobs.detach() + self.target_entropy).mean()
         else:
             policy_loss = (-b_q_values).mean()
             temp_loss = None

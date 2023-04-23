@@ -9,9 +9,6 @@ __pycache__/
 # Experiment dir
 runs/
 
-# Test agents
-ppo/
-ppo_kl_prior/
 
 # Distribution / packaging
 .Python
