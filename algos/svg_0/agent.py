@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import BatchSampler, RandomSampler
 
 from utils.logger import Logger
+from utils.misc import save_state
 from algos.svg_0.core import StochasticPolicy, DoubleQFunction
 
 
@@ -43,9 +44,7 @@ class SVG0(nn.Module):
         self.use_target_entropy = use_target_entropy
 
         # Policy network
-        self.pi = StochasticPolicy(
-            obs_dim, action_dim, hidden_sizes, activation
-        )
+        self.pi = StochasticPolicy(obs_dim, action_dim, hidden_sizes, activation)
 
         # Q functions networks
         self.q = DoubleQFunction(obs_dim, action_dim, hidden_sizes, activation)
@@ -70,7 +69,18 @@ class SVG0(nn.Module):
         if self.use_target_entropy:
             self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
             self.temp_optimizer = optim.Adam([self.log_alpha], lr=lr)
-    
+
+    def save_weights(self, path, episode):
+        save_state(
+            {
+                "q": self.q.state_dict(),
+                "pi": self.pi.state_dict(),
+                "q_optim": self.q_optim.state_dict(),
+                "pi_optim": self.pi_optim.state_dict(),
+            },
+            path,
+            episode,
+        )
 
     def update_target(self):
         # Update target networks by polyak averaging.
@@ -84,7 +94,6 @@ class SVG0(nn.Module):
 
         if deterministic:
             action = mean
-
 
         action.clamp_(-self.action_limit, self.action_limit)
         return action
@@ -180,7 +189,10 @@ class SVG0(nn.Module):
 
         if self.use_target_entropy:
             policy_loss = (self.log_alpha.exp() * b_logprobs - b_q_values).mean()
-            temp_loss = -self.log_alpha.exp() * (b_logprobs.detach() + self.target_entropy).mean()
+            temp_loss = (
+                -self.log_alpha.exp()
+                * (b_logprobs.detach() + self.target_entropy).mean()
+            )
         else:
             policy_loss = (-b_q_values).mean()
             temp_loss = None

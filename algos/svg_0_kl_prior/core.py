@@ -30,7 +30,6 @@ class StochasticPolicy(nn.Module):
         log_std = torch.clamp(log_std, self.LOG_STD_MIN, self.LOG_STD_MAX)
         std = log_std.exp()
 
-        # TODO: Double check reparameterization trick
         # Pre-squash distribution and sample
         pi_distribution = Normal(mu, std)
         transforms = [TanhTransform(cache_size=1)]

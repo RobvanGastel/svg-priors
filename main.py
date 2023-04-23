@@ -81,8 +81,9 @@ def main(config, agent_cls):
             if episode % (config["log_every_n"] * 5) == 0:
                 make_gif(agent, test_env, episode, config)
 
-            # TODO: When implementation is stable
-            # agent.save_weights(config["path"], epoch)
+            # Save the weights
+            if not config["debug"]:
+                agent.save_weights(config["path"], episode)
 
             test_return, test_ep_len = evaluate_policy(agent, test_env)
 
@@ -123,6 +124,7 @@ def evaluate_policy(agent, env, episodes=10):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", type=str)
+    parser.add_argument("-d", "--debug", action='store_true', help='run in debug mode')
     parser.add_argument(
         "-a", "--agent", type=str, default="svg0_prior", choices=["svg0", "svg0_prior"]
     )
@@ -132,6 +134,8 @@ if __name__ == "__main__":
 
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
+    config["debug"] = args.debug
 
     # Initialize logger
     config["name"] = args.name

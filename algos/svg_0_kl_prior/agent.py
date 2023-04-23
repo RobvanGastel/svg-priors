@@ -7,6 +7,7 @@ from torch.distributions.kl import kl_divergence
 from torch.utils.data import BatchSampler, RandomSampler
 
 from utils.logger import Logger
+from utils.misc import save_state
 from algos.svg_0_kl_prior.core import StochasticPolicy, DoubleQFunction
 
 
@@ -42,9 +43,7 @@ class SVG0(nn.Module):
         self.update_interval = update_interval
 
         # Policy network
-        self.pi = StochasticPolicy(
-            obs_dim, action_dim, hidden_sizes, activation
-        )
+        self.pi = StochasticPolicy(obs_dim, action_dim, hidden_sizes, activation)
 
         # Prior policy network
         self.prior_pi = StochasticPolicy(
@@ -70,6 +69,20 @@ class SVG0(nn.Module):
         )
         self.q_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.q_optim, 1, 1e-6, total_iters=3000
+        )
+
+    def save_weights(self, path, episode):
+        save_state(
+            {
+                "q": self.q.state_dict(),
+                "pi": self.pi.state_dict(),
+                "prior_pi": self.prior_pi.state_dict(),
+                "q_optim": self.q_optim.state_dict(),
+                "pi_optim": self.pi_optim.state_dict(),
+                "prior_optim": self.prior_pi.state_dict(),
+            },
+            path,
+            episode,
         )
 
     def update_target(self):
@@ -105,7 +118,9 @@ class SVG0(nn.Module):
             # TODO: Taking assymetric prior samples needs to be done properly
             with torch.no_grad():
                 _, _, _, pi = self.pi(mini_batch["next_obs"])
-            _, _, _, prior_pi = self.prior_pi(mini_batch["next_obs"][:, :self.prior_obs_dim])
+            _, _, _, prior_pi = self.prior_pi(
+                mini_batch["next_obs"][:, : self.prior_obs_dim]
+            )
             kl_reg = kl_divergence(pi, prior_pi)
             loss_kl = kl_reg.sum()
 
@@ -113,7 +128,7 @@ class SVG0(nn.Module):
             self.prior_optim.zero_grad()
             loss_kl.backward()
             self.prior_optim.step()
-            
+
             # Update Q functions
             q_loss, q_1, q_2 = self._compute_q_loss(mini_batch)
 
@@ -161,14 +176,12 @@ class SVG0(nn.Module):
         )
 
         with torch.no_grad():
-            b_next_action, _, b_next_mean, pi = self.pi(
-                b_next_obs, with_logp=False
-            )
-            _, _, _, prior_pi = self.prior_pi(b_next_obs[:, :self.prior_obs_dim])
+            b_next_action, _, b_next_mean, pi = self.pi(b_next_obs, with_logp=False)
+            _, _, _, prior_pi = self.prior_pi(b_next_obs[:, : self.prior_obs_dim])
 
             # \bar{KL}_t' = KL[pi(. | s_t')||prior_pi(. | s_t')]
             kl_reg = kl_divergence(pi, prior_pi)
-            
+
             target_noise = b_next_action - b_next_mean
             b_next_action = b_next_mean + target_noise
 
