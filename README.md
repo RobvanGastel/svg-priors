@@ -2,15 +2,22 @@
 A PyTorch implemenation of the SVG(0) algorithm with extension of KL regularized, and behavior priors.
 
 ## Setup
-Install the following packages.
-
-TODO
-
+Install the packages in `requirements.txt`. 
 
 ## Usage
+Run experiments by using the following example command:
 
-TODO
+```bash
+python main.py --name pendulum_svg0_kl_prior --a svg0_prior -c configs/svg0_kl_prior.yml
+```
 
+Arguments
+```
+--name: Name of the experiment
+-d, --debug: Enable debug mode so model parameters are not stored.
+-a, --alg: Algorithm selection, choices: {svg0, svg0_kl_prior}
+-c, --config: Location of the config files, see /configs
+```
 
 ## Algorithms
 
