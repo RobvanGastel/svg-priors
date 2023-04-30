@@ -61,7 +61,18 @@ class TanhTransform(Transform):
 
 
 def make_gif(agent, env, episode, config):
-    """Save gif of the model on a test environment"""
+    """
+    Generate a GIF of the agent's performance during an episode in a given environment.
+
+    Args:
+        agent (object): An instance of the agent whose performance will be recorded.
+        env (object): An instance of the OpenAI gym environment.
+        episode (int): The episode number to save recording.
+        config (dict): A dictionary of configuration parameters.
+
+    Returns:
+        None.
+    """
 
     obs, _ = env.reset()
     terminated, truncated = False, False
@@ -75,7 +86,6 @@ def make_gif(agent, env, episode, config):
         action = np.clip(
             action.cpu().numpy(), env.action_space.low[0], env.action_space.high[0]
         )
-        # print(f"debug: action {action}")
         obs, reward, terminated, truncated, _ = env.step(action)
         rewards.append(reward)
 

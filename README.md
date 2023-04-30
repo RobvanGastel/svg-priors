@@ -24,7 +24,7 @@ Arguments
 - [x] SVG(0)
 - [x] SVG(0) with KL regularized prior
 - [ ] SVG(∞)
-- [ ] SVG(0) with behavior priors
+- [ ] ~~SVG(0) with behavior priors~~
 
 
 ## Results

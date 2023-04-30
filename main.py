@@ -124,7 +124,7 @@ def evaluate_policy(agent, env, episodes=10):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", type=str)
-    parser.add_argument("-d", "--debug", action='store_true', help='run in debug mode')
+    parser.add_argument("-d", "--debug", action="store_true", help="run in debug mode")
     parser.add_argument(
         "-a", "--agent", type=str, default="svg0_prior", choices=["svg0", "svg0_prior"]
     )
@@ -135,10 +135,9 @@ if __name__ == "__main__":
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    config["debug"] = args.debug
-
     # Initialize logger
     config["name"] = args.name
+    config["debug"] = args.debug
     config["path"] = f"runs/{args.name}"
     Logger(args.name, config["path"])
 
