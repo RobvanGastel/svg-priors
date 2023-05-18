@@ -14,7 +14,7 @@ svg0:
   lr: 3.0e-4
   gamma: 0.95
   buffer_steps: 2_000
-  use_target_entropy: False
+  use_target_entropy: True 
   update_epochs: 3
   batch_size: 256
   update_interval: 1

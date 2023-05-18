@@ -3,12 +3,12 @@ import argparse
 
 import torch
 import numpy as np
-
 import gymnasium as gym
 from gymnasium.wrappers import RecordEpisodeStatistics
 
 from utils.misc import make_gif
 from utils.logger import Logger
+from utils.dmcontrol_wrapper import DMControlWrapper
 from utils.buffer import RolloutBuffer
 from algos.svg_0.agent import SVG0
 from algos.svg_0_kl_prior.agent import SVG0 as SVG0_KL_prior
@@ -18,17 +18,30 @@ def main(config, agent_cls):
     Logger.get().info(f"Start training, experiment name: {config['name']}")
     Logger.get().info(f"Config: {config}")
 
-    env = RecordEpisodeStatistics(gym.make(config["env"]))
-    test_env = RecordEpisodeStatistics(gym.make(config["env"], render_mode="rgb_array"))
+    if config["is_dm_control"]:
+        env = RecordEpisodeStatistics(
+            DMControlWrapper(config["domain"], config["task"])
+        )
+        test_env = RecordEpisodeStatistics(
+            DMControlWrapper(
+                config["domain"],
+                config["task"],
+                render_kwargs={"height": 480, "width": 640},
+            )
+        )
 
-    Logger.get().info(
-        f"Env spaces: {env.observation_space, env.action_space}, steps: {env.spec.max_episode_steps}"
-    )
+    else:
+        env = RecordEpisodeStatistics(gym.make(config["env"]))
+        test_env = RecordEpisodeStatistics(
+            gym.make(config["env"], render_mode="rgb_array")
+        )
 
+    Logger.get().info(f"Env spaces: {env.observation_space, env.action_space}")
     agent = agent_cls(
         obs_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
-        action_lim=env.action_space.high[0],
+        action_lim=0.8,
+        action_space=env.action_space,
         device=config["device"],
         **config["svg0"],
     ).to(config["device"])
