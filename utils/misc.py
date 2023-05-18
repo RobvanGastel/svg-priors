@@ -8,8 +8,9 @@ from torch.distributions import constraints
 from torch.distributions.transforms import Transform
 
 import numpy as np
-from utils.logger import Logger
 from moviepy.editor import ImageSequenceClip
+
+from utils.logger import Logger
 
 
 def mlp(sizes, activation, output_activation=nn.Identity):
@@ -79,15 +80,15 @@ def make_gif(agent, env, episode, config):
     steps = []
     rewards = []
     while not (terminated or truncated):
-        steps.append(env.render())
-
         obs = torch.tensor(obs).float().to(config["device"])
         action = agent.act(obs, deterministic=True)
         action = np.clip(
-            action.cpu().numpy(), env.action_space.low[0], env.action_space.high[0]
+            action.cpu().numpy(), env.action_space.low, env.action_space.high
         )
         obs, reward, terminated, truncated, _ = env.step(action)
         rewards.append(reward)
+
+        steps.append(env.render())
 
     clip = ImageSequenceClip(steps, fps=30)
     save_dir = os.path.join(config["path"], "gifs")

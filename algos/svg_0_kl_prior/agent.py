@@ -17,6 +17,8 @@ class SVG0(nn.Module):
         obs_dim,
         action_dim,
         action_lim,
+        action_space,
+        device,
         lr=3e-4,
         tau=5e-3,
         gamma=0.95,
@@ -41,6 +43,10 @@ class SVG0(nn.Module):
         self.prior_obs_dim = prior_obs_dim
         self.update_epochs = update_epochs
         self.update_interval = update_interval
+
+        # Set clamp values
+        self.action_low = torch.tensor(action_space.low).to(device)
+        self.action_high = torch.tensor(action_space.high).to(device)
 
         # Policy network
         self.pi = StochasticPolicy(obs_dim, action_dim, hidden_sizes, activation)
@@ -98,7 +104,7 @@ class SVG0(nn.Module):
         if deterministic:
             action = mean
 
-        action.clamp_(-self.action_limit, self.action_limit)
+        action.clamp_(-self.action_low, self.action_high)
         return action
 
     def optimize(self, batch, global_step):
