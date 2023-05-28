@@ -100,7 +100,7 @@ class SVG0(nn.Module):
         if deterministic:
             action = mean
 
-        action.clamp_(-self.action_low, self.action_high)
+        action.clamp_(self.action_low, self.action_high)
         return action
 
     def optimize(self, batch, global_step):
@@ -124,7 +124,6 @@ class SVG0(nn.Module):
             self.q_optim.step()
 
             if self.update_step % self.update_interval == 0:
-
                 for p in self.q.parameters():
                     p.requires_grad = False
 
@@ -157,7 +156,6 @@ class SVG0(nn.Module):
         writer.add_histogram("SVG0/Q2_histogram", q_2, global_step)
 
     def _compute_q_loss(self, batch):
-
         b_obs, b_act, b_rew, b_next_obs, b_done = (
             batch["obs"],
             batch["action"],
