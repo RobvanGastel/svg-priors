@@ -6,12 +6,9 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.wrappers import RecordEpisodeStatistics
 
-from utils.misc import make_gif
-from utils.logger import Logger
-from utils.dmcontrol_wrapper import DMControlWrapper
-from utils.buffer import RolloutBuffer
 from algos.svg_0.agent import SVG0
 from algos.svg_0_kl_prior.agent import SVG0 as SVG0_KL_prior
+from utils import make_gif, Logger, RolloutBuffer, DMControlWrapper
 
 
 def main(config, agent_cls):
@@ -67,6 +64,7 @@ def main(config, agent_cls):
                 act = agent.act(obs).cpu().numpy()
 
             next_obs, rew, termination, truncated, info = env.step(act)
+
             buffer.store(obs, act, rew, next_obs, termination)
             obs = next_obs
 
@@ -90,7 +88,6 @@ def main(config, agent_cls):
 
         # Store the weights, make a gif, eval and logging
         if episode % config["log_every_n"] == 0 and episode != 0:
-
             if episode % (config["log_every_n"] * 5) == 0:
                 make_gif(agent, test_env, episode, config)
 
@@ -113,7 +110,6 @@ def main(config, agent_cls):
 
 
 def evaluate_policy(agent, env, episodes=10):
-
     avg_return, avg_ep_len = [], []
     for _ in range(1, episodes):
         obs, _ = env.reset()
@@ -136,17 +132,25 @@ def evaluate_policy(agent, env, episodes=10):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--name", type=str)
+    parser.add_argument("-n", "--name", required=True, type=str)
     parser.add_argument("-d", "--debug", action="store_true", help="run in debug mode")
     parser.add_argument(
-        "-a", "--agent", type=str, default="svg0_prior", choices=["svg0", "svg0_prior"]
+        "-a",
+        "--agent",
+        type=str,
+        default="svg0_prior",
+        choices=["svg0", "svg0_prior", "cnn_svg0"],
     )
     parser.add_argument("-c", "--config", type=str, default="configs/svg0.yml")
     args = parser.parse_args()
-    assert args.name is not None, "Pass a name for the experiment"
 
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
+    # TODO: Ignore the DeprecationWarning from Tensorboard
+    import warnings
+
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
 
     # Initialize logger
     config["name"] = args.name
@@ -163,5 +167,6 @@ if __name__ == "__main__":
     torch.manual_seed(config["seed"])
 
     # Determine the agent
-    agent_cls = SVG0 if args.agent == "svg0" else SVG0_KL_prior
+    agent = {"svg0": SVG0, "svg0_prior": SVG0_KL_prior}
+    agent_cls = agent[args.agent]
     main(config, agent_cls=agent_cls)

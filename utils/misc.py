@@ -81,13 +81,15 @@ def make_gif(agent, env, episode, config):
     rewards = []
     while not (terminated or truncated):
         obs = torch.tensor(obs).float().to(config["device"])
+
         action = agent.act(obs, deterministic=True)
         action = np.clip(
             action.cpu().numpy(), env.action_space.low, env.action_space.high
         )
-        obs, reward, terminated, truncated, _ = env.step(action)
-        rewards.append(reward)
 
+        obs, reward, terminated, truncated, _ = env.step(action)
+
+        rewards.append(reward)
         steps.append(env.render())
 
     clip = ImageSequenceClip(steps, fps=30)

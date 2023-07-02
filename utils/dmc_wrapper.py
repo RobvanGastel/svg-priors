@@ -119,6 +119,7 @@ class DMControlWrapper(Env):
         if action.dtype.kind == "f":
             action = action.astype(np.float32)
         assert self._action_space.contains(action)
+
         timestep = self._env.step(action)
         observation = _flatten_obs(timestep.observation)
         reward = timestep.reward
